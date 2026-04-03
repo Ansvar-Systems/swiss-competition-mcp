@@ -1,11 +1,38 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "eu.ansvar/swiss-competition-mcp",
-  "description": "Query COMCO (Swiss Competition Commission) decisions, merger control cases, and sector enforcement activity under Swiss competition law (KG/LCart)",
-  "repository": { "url": "https://github.com/Ansvar-Systems/swiss-competition-mcp", "source": "github" },
+  "description": "COMCO (Swiss Competition Commission) MCP server — competition law decisions, merger control, and sector enforcement under Swiss competition law (KG/LCart)",
+  "repository": {
+    "url": "https://github.com/Ansvar-Systems/swiss-competition-mcp",
+    "source": "github"
+  },
   "homepage": "https://ansvar.eu",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "Apache-2.0",
-  "keywords": ["comco", "swiss-competition", "switzerland", "antitrust", "merger-control", "kg-lcart", "competition-law", "compliance", "mcp", "ansvar"],
-  "packages": [{ "registryType": "npm", "identifier": "@ansvar/swiss-competition-mcp", "version": "0.1.0", "transport": { "type": "stdio" } }]
+  "keywords": [
+    "competition",
+    "switzerland",
+    "regulation",
+    "compliance",
+    "mcp"
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@ansvar/swiss-competition-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "npm",
+      "identifier": "@ansvar/swiss-competition-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://mcp.ansvar.eu/swiss-competition/mcp"
+      }
+    }
+  ]
 }
