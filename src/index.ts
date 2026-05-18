@@ -123,13 +123,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const parsed = GetDecisionArgs.parse(args);
         const decision = getDecision(parsed.case_number);
         if (!decision) return errorContent(`Decision not found: ${parsed.case_number}`);
+        const decisionObj = decision as unknown as Record<string, unknown>;
         const _citation = buildCitation(
           parsed.case_number,
-          (decision as Record<string, unknown>).title as string || parsed.case_number,
+          (decisionObj.title as string) || parsed.case_number,
           "ch_comp_get_decision",
           { case_number: parsed.case_number },
         );
-        return textContent({ ...decision as Record<string, unknown>, _citation });
+        return textContent({ ...decisionObj, _citation });
       }
       case "ch_comp_search_mergers": {
         const parsed = SearchMergersArgs.parse(args);
@@ -140,13 +141,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const parsed = GetMergerArgs.parse(args);
         const merger = getMerger(parsed.case_number);
         if (!merger) return errorContent(`Merger case not found: ${parsed.case_number}`);
+        const mergerObj = merger as unknown as Record<string, unknown>;
         const _citation = buildCitation(
           parsed.case_number,
-          (merger as Record<string, unknown>).title as string || parsed.case_number,
+          (mergerObj.title as string) || parsed.case_number,
           "ch_comp_get_merger",
           { case_number: parsed.case_number },
         );
-        return textContent({ ...merger as Record<string, unknown>, _citation });
+        return textContent({ ...mergerObj, _citation });
       }
       case "ch_comp_list_sectors": {
         const sectors = listSectors();
