@@ -1,74 +1,51 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Swiss Competition (COMCO) MCP — multi-stage Dockerfile
-# ─────────────────────────────────────────────────────────────────────────────
-# Build:  docker build -t swiss-competition-mcp .
-# Run:    docker run --rm -p 3000:3000 swiss-competition-mcp
-#
-# The image bakes /app/data/comco.db at build time. Override COMCO_DB_PATH
-# for a custom location at runtime.
-# ─────────────────────────────────────────────────────────────────────────────
+# MCP Server — Hetzner / Kubernetes
+# Image contract: docs/superpowers/specs/2026-04-25-mcp-infrastructure-standard-design.md §3
+# Profile: node-native (better-sqlite3 — native modules built in builder, pruned, copied)
+# DB pattern: none
 
-# --- Stage 1: Build TypeScript and rebuild native bindings ---
-FROM node:20-slim AS builder
+FROM node:20-alpine AS builder
+
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Native build deps for better-sqlite3 prebuild + compile fallback.
-RUN apt-get update \
- && apt-get install --no-install-recommends -y python3 make g++ \
- && rm -rf /var/lib/apt/lists/*
-
-COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
-
-# Native module rebuild — better-sqlite3's prebuild-fetch / native-compile
-# postinstall hook was skipped by --ignore-scripts above. Without this, the
-# .node binding is missing from node_modules and every SQLite call throws
-# "Could not locate the bindings file" at runtime.
-# Source: 2026-05-10 sector MCP binding regression — see plan
-# Ansvar-Architecture-Documentation/docs/superpowers/plans/2026-05-10-sector-mcp-binding-regression-recovery.md
+COPY package*.json ./
+RUN npm ci --ignore-scripts && npm cache clean --force
+# Native module rebuild — better-sqlite3 needs its .node binding for build:db
+# to open the DB. --ignore-scripts above skipped the prebuild-fetch.
 RUN npm rebuild better-sqlite3
 
 COPY tsconfig.json ./
-COPY src/ src/
+COPY src/ ./src/
+COPY scripts/ ./scripts/
 RUN npm run build
-
-# Drop devDependencies in place so the runtime stage can copy a lean
-# node_modules tree that still contains the rebuilt better-sqlite3 binding.
 RUN npm prune --omit=dev
 
-# --- Stage 2: Production ---
-FROM node:20-slim AS production
+FROM node:20-alpine AS runtime
 
 WORKDIR /app
-ENV NODE_ENV=production
-ENV COMCO_DB_PATH=/app/data/comco.db
 
-# Copy node_modules (with the rebuilt .node binding) from the builder.
-# Do NOT run `npm ci` here — the slim runtime has no python3/make/g++ so
-# the rebuild would fail and we'd ship a binding-less image again.
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist/ dist/
-COPY package.json package-lock.json* ./
+RUN addgroup -g 1001 -S nodejs \
+ && adduser -u 1001 -S nodejs -G nodejs
 
-# Bake the pre-built database into the image so /app/data/comco.db resolves
-# at runtime without a bind mount.
-#
-# `data/database.db` is provisioned by ghcr-build.yml's "Provision database"
-# step — it `gh release download`s `database.db.gz` and gunzips to that path.
-# We then COPY it into the image at /app/data/comco.db (COMCO_DB_PATH). The
-# explicit `data/<name>.db` reference is required for the workflow's grep
-# `COPY\s+\K(data/\S+\.db)` to match.
-COPY data/database.db data/comco.db
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --chown=nodejs:nodejs package.json ./
+# (no DB embedded — premium-mounted or stub MCP)
 
-# Non-root user for security
-RUN addgroup --system --gid 1001 mcp \
- && adduser --system --uid 1001 --ingroup mcp mcp \
- && chown -R mcp:mcp /app
-USER mcp
+# Ensure /app/data exists and is writable by the runtime user.
+# SQLite needs to write -wal/-shm sidecars in the DB directory; even
+# a read-only DB requires this unless journal_mode=delete is forced.
+RUN mkdir -p /app/data && chown -R nodejs:nodejs /app/data
 
-# Health check: verify HTTP server responds
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+USER nodejs
 
-CMD ["node", "dist/src/http-server.js"]
+ENV NODE_ENV=production \
+    PORT=3000
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"
+
+CMD ["node", "dist/http-server.js"]
